@@ -237,6 +237,7 @@ const AP_Param::GroupInfo RC_Channel::var_info[] = {
     // @Values{Copter, Rover, Plane, Blimp}: 175:Camera Lens
     // @Values{Plane}: 176:Quadplane Fwd Throttle Override enable
     // @Values{Copter, Rover, Plane, Blimp}: 177:Mount LRF enable
+    // @Values{Copter}: 178:FlightMode Pause/Resume
     // @Values{Rover}: 201:Roll
     // @Values{Rover}: 202:Pitch
     // @Values{Rover}: 207:MainSail
@@ -624,26 +625,42 @@ void RC_Channel::init_aux_function(const AUX_FUNC ch_option, const AuxSwitchPos 
     switch (ch_option) {
     // the following functions do not need to be initialised:
     case AUX_FUNC::ARMDISARM:
+    case AUX_FUNC::ARMDISARM_AIRMODE:
+#if AP_BATTERY_ENABLED
     case AUX_FUNC::BATTERY_MPPT_ENABLE:
+#endif
+#if AP_CAMERA_ENABLED
     case AUX_FUNC::CAMERA_TRIGGER:
+#endif
     case AUX_FUNC::CLEAR_WP:
     case AUX_FUNC::COMPASS_LEARN:
     case AUX_FUNC::DISARM:
     case AUX_FUNC::DO_NOTHING:
+#if AP_LANDINGGEAR_ENABLED
     case AUX_FUNC::LANDING_GEAR:
+#endif
     case AUX_FUNC::LOST_VEHICLE_SOUND:
+#if AP_SERVORELAYEVENTS_ENABLED && AP_RELAY_ENABLED
     case AUX_FUNC::RELAY:
     case AUX_FUNC::RELAY2:
     case AUX_FUNC::RELAY3:
     case AUX_FUNC::RELAY4:
     case AUX_FUNC::RELAY5:
     case AUX_FUNC::RELAY6:
+#endif
+#if HAL_VISUALODOM_ENABLED
     case AUX_FUNC::VISODOM_ALIGN:
+#endif
     case AUX_FUNC::EKF_LANE_SWITCH:
     case AUX_FUNC::EKF_YAW_RESET:
+#if HAL_GENERATOR_ENABLED
     case AUX_FUNC::GENERATOR: // don't turn generator on or off initially
+#endif
     case AUX_FUNC::EKF_POS_SOURCE:
+#if HAL_TORQEEDO_ENABLED
     case AUX_FUNC::TORQEEDO_CLEAR_ERR:
+#endif
+#if AP_SCRIPTING_ENABLED
     case AUX_FUNC::SCRIPTING_1:
     case AUX_FUNC::SCRIPTING_2:
     case AUX_FUNC::SCRIPTING_3:
@@ -652,31 +669,46 @@ void RC_Channel::init_aux_function(const AUX_FUNC ch_option, const AuxSwitchPos 
     case AUX_FUNC::SCRIPTING_6:
     case AUX_FUNC::SCRIPTING_7:
     case AUX_FUNC::SCRIPTING_8:
+#endif
 #if AP_VIDEOTX_ENABLED
     case AUX_FUNC::VTX_POWER:
 #endif
+#if AP_OPTICALFLOW_CALIBRATOR_ENABLED
     case AUX_FUNC::OPTFLOW_CAL:
+#endif
     case AUX_FUNC::TURBINE_START:
+#if HAL_MOUNT_ENABLED
     case AUX_FUNC::MOUNT1_ROLL:
     case AUX_FUNC::MOUNT1_PITCH:
     case AUX_FUNC::MOUNT1_YAW:
     case AUX_FUNC::MOUNT2_ROLL:
     case AUX_FUNC::MOUNT2_PITCH:
     case AUX_FUNC::MOUNT2_YAW:
+#endif
     case AUX_FUNC::LOWEHEISER_STARTER:
     case AUX_FUNC::MAG_CAL:
+#if AP_CAMERA_ENABLED
     case AUX_FUNC::CAMERA_IMAGE_TRACKING:
+#endif
+#if HAL_MOUNT_ENABLED
     case AUX_FUNC::MOUNT_LRF_ENABLE:
+#endif
         break;
 
     // not really aux functions:
     case AUX_FUNC::LOWEHEISER_THROTTLE:
         break;
+#if HAL_ADSB_ENABLED
     case AUX_FUNC::AVOID_ADSB:
+#endif
     case AUX_FUNC::AVOID_PROXIMITY:
+#if AP_FENCE_ENABLED
     case AUX_FUNC::FENCE:
+#endif
+#if AP_GPS_ENABLED
     case AUX_FUNC::GPS_DISABLE:
     case AUX_FUNC::GPS_DISABLE_YAW:
+#endif
 #if AP_GRIPPER_ENABLED
     case AUX_FUNC::GRIPPER:
 #endif
@@ -688,22 +720,30 @@ void RC_Channel::init_aux_function(const AUX_FUNC ch_option, const AuxSwitchPos 
     case AUX_FUNC::MISSION_RESET:
     case AUX_FUNC::MOTOR_ESTOP:
     case AUX_FUNC::RC_OVERRIDE_ENABLE:
+#if HAL_RUNCAM_ENABLED
     case AUX_FUNC::RUNCAM_CONTROL:
     case AUX_FUNC::RUNCAM_OSD_CONTROL:
+#endif
+#if HAL_SPRAYER_ENABLED
     case AUX_FUNC::SPRAYER:
+#endif
     case AUX_FUNC::DISABLE_AIRSPEED_USE:
     case AUX_FUNC::FFT_NOTCH_TUNE:
 #if HAL_MOUNT_ENABLED
     case AUX_FUNC::RETRACT_MOUNT1:
     case AUX_FUNC::MOUNT_LOCK:
 #endif
+#if HAL_LOGGING_ENABLED
     case AUX_FUNC::LOG_PAUSE:
+#endif
     case AUX_FUNC::ARM_EMERGENCY_STOP:
+#if AP_CAMERA_ENABLED
     case AUX_FUNC::CAMERA_REC_VIDEO:
     case AUX_FUNC::CAMERA_ZOOM:
     case AUX_FUNC::CAMERA_MANUAL_FOCUS:
     case AUX_FUNC::CAMERA_AUTO_FOCUS:
     case AUX_FUNC::CAMERA_LENS:
+#endif
     case AUX_FUNC::AHRS_TYPE:
         run_aux_function(ch_option, ch_flag, AuxFuncTriggerSource::INIT);
         break;
@@ -828,6 +868,14 @@ bool RC_Channel::read_aux()
         return false;
     }
 
+    if (!switch_state.initialised) {
+        switch_state.initialised = true;
+        if (init_position_on_first_radio_read((AUX_FUNC)option.get())) {
+            switch_state.current_position = (int8_t)new_position;
+            switch_state.debounce_position = (int8_t)new_position;
+        }
+    }
+
     if (!debounce_completed((int8_t)new_position)) {
         return false;
     }
@@ -845,6 +893,26 @@ bool RC_Channel::read_aux()
     return true;
 }
 
+// returns true if the first time we successfully read the
+// channel's three-position-switch position we should record that
+// position as the current position *without* executing the
+// associated auxiliary function.  e.g. do not attempt to arm a
+// vehicle when the user turns on their transmitter with the arm
+// switch high!
+bool RC_Channel::init_position_on_first_radio_read(AUX_FUNC func) const
+{
+    switch (func) {
+    case AUX_FUNC::ARMDISARM_AIRMODE:
+    case AUX_FUNC::ARMDISARM:
+    case AUX_FUNC::ARM_EMERGENCY_STOP:
+    case AUX_FUNC::PARACHUTE_RELEASE:
+
+        // we do not want to process 
+        return true;
+    default:
+        return false;
+    }
+}
 
 void RC_Channel::do_aux_function_armdisarm(const AuxSwitchPos ch_flag)
 {
@@ -1017,9 +1085,9 @@ bool RC_Channel::do_aux_function_camera_lens(const AuxSwitchPos ch_flag)
 }
 #endif // AP_CAMERA_ENABLED
 
+#if HAL_RUNCAM_ENABLED
 void RC_Channel::do_aux_function_runcam_control(const AuxSwitchPos ch_flag)
 {
-#if HAL_RUNCAM_ENABLED
     AP_RunCam *runcam = AP::runcam();
     if (runcam == nullptr) {
         return;
@@ -1036,12 +1104,10 @@ void RC_Channel::do_aux_function_runcam_control(const AuxSwitchPos ch_flag)
         runcam->stop_recording();
         break;
     }
-#endif
 }
 
 void RC_Channel::do_aux_function_runcam_osd_control(const AuxSwitchPos ch_flag)
 {
-#if HAL_RUNCAM_ENABLED
     AP_RunCam *runcam = AP::runcam();
     if (runcam == nullptr) {
         return;
@@ -1056,8 +1122,8 @@ void RC_Channel::do_aux_function_runcam_osd_control(const AuxSwitchPos ch_flag)
         runcam->exit_osd();
         break;
     }
-#endif
 }
+#endif
 
 #if AP_FENCE_ENABLED
 // enable or disable the fence
@@ -1125,7 +1191,6 @@ void RC_Channel::do_aux_function_sprayer(const AuxSwitchPos ch_flag)
     if (sprayer == nullptr) {
         return;
     }
-
     sprayer->run(ch_flag == AuxSwitchPos::HIGH);
     // if we are disarmed the pilot must want to test the pump
     sprayer->test_pump((ch_flag == AuxSwitchPos::HIGH) && !hal.util->get_soft_armed());
@@ -1297,6 +1362,7 @@ bool RC_Channel::do_aux_function(const AUX_FUNC ch_option, const AuxSwitchPos ch
         break;
 #endif  // AP_SERVORELAYEVENTS_ENABLED && AP_RELAY_ENABLED
 
+#if HAL_RUNCAM_ENABLED
     case AUX_FUNC::RUNCAM_CONTROL:
         do_aux_function_runcam_control(ch_flag);
         break;
@@ -1304,6 +1370,7 @@ bool RC_Channel::do_aux_function(const AUX_FUNC ch_option, const AuxSwitchPos ch
     case AUX_FUNC::RUNCAM_OSD_CONTROL:
         do_aux_function_runcam_osd_control(ch_flag);
         break;
+#endif
 
     case AUX_FUNC::CLEAR_WP:
         do_aux_function_clear_wp(ch_flag);
@@ -1312,9 +1379,11 @@ bool RC_Channel::do_aux_function(const AUX_FUNC ch_option, const AuxSwitchPos ch
         do_aux_function_mission_reset(ch_flag);
         break;
 
+#if HAL_ADSB_ENABLED
     case AUX_FUNC::AVOID_ADSB:
         do_aux_function_avoid_adsb(ch_flag);
         break;
+#endif
 
     case AUX_FUNC::FFT_NOTCH_TUNE:
         do_aux_function_fft_notch_tune(ch_flag);
@@ -1382,6 +1451,7 @@ bool RC_Channel::do_aux_function(const AUX_FUNC ch_option, const AuxSwitchPos ch
     }
 #endif
 
+#if AP_GPS_ENABLED
     case AUX_FUNC::GPS_DISABLE:
         AP::gps().force_disable(ch_flag == AuxSwitchPos::HIGH);
 #if HAL_EXTERNAL_AHRS_ENABLED
@@ -1392,6 +1462,7 @@ bool RC_Channel::do_aux_function(const AUX_FUNC ch_option, const AuxSwitchPos ch
     case AUX_FUNC::GPS_DISABLE_YAW:
         AP::gps().set_force_disable_yaw(ch_flag == AuxSwitchPos::HIGH);
         break;
+#endif  // AP_GPS_ENABLED
 
 #if AP_AIRSPEED_ENABLED
     case AUX_FUNC::DISABLE_AIRSPEED_USE: {
@@ -1765,7 +1836,7 @@ RC_Channel *RC_Channels::find_channel_for_option(const RC_Channel::AUX_FUNC opti
 // duplicate_options_exist - returns true if any options are duplicated
 bool RC_Channels::duplicate_options_exist()
 {
-    uint8_t auxsw_option_counts[256] = {};
+    uint8_t auxsw_option_counts[512] = {};
     for (uint8_t i=0; i<NUM_RC_CHANNELS; i++) {
         const RC_Channel *c = channel(i);
         if (c == nullptr) {
